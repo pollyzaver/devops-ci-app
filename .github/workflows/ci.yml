@@ -111,20 +111,21 @@ jobs:
           PY
           docker exec smoke id
 
-      - name: Tag registry image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          docker tag "devops-ci-app:${GITHUB_SHA}" "${IMAGE_NAME}:${GITHUB_SHA}"
-          docker tag "devops-ci-app:${GITHUB_SHA}" "${IMAGE_NAME}:latest"
-
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s\n' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
-      - name: Push image
+      - name: Publish multi-arch image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          docker push "${IMAGE_NAME}:${GITHUB_SHA}"
-          docker push "${IMAGE_NAME}:latest"
+          set -euo pipefail
+          docker run --privileged --rm tonistiigi/binfmt --install arm64
+          docker buildx create --name multiarch --driver docker-container --use
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=false \
+            --tag "${IMAGE_NAME}:${GITHUB_SHA}" \
+            --tag "${IMAGE_NAME}:latest" \
+            --push .
